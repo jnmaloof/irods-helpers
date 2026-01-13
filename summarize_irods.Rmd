@@ -1,0 +1,86 @@
+---
+title: "summarize directories"
+output: html_document
+date: "2025-12-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+options(scipen = 999)  
+
+library(tidyverse)
+
+library(igraph)
+```
+```{r}
+to_gb <- function(x) {
+pattern <- "^([0-9.]+)\\s+([A-Za-z]+)$"
+  m <- regexec(pattern, x)
+  pieces <- regmatches(x, m)
+
+  vapply(pieces, function(p) {
+    if (length(p) == 0L) return(NA_real_)  # no match
+    value <- as.numeric(p[2])
+    unit  <- toupper(p[3])
+
+    mult <- switch(unit,
+                   B  = 1,
+                   KB = 1e3,
+                   MB = 1e6,
+                   GB = 1e9,
+                   TB = 1e12,
+                   PB = 1e15,
+                   stop("Unknown unit: ", unit))
+
+    (value * mult) / 1e9  # bytes -> GB
+  }, numeric(1))
+}
+
+# examples
+to_gb(c("10 B", "5 KB", "1.2 MB", "3 GB", "0.5 TB"))
+
+```
+
+
+```{r}
+d <- read_tsv("ucd.brassica.tsv") %>%
+  drop_na() %>%
+  mutate(dir = str_c(dir, "/"))
+head(d)
+```
+
+```{r}
+ds <- d %>% 
+  group_by(dir) %>%
+  summarize(size=round(sum(to_gb(size)), 1)) %>%
+  arrange(desc(size))
+
+ds
+```
+
+This hasn't really been summarized as I would like it (hierarchical through the tree).  Try to do that now
+
+```{r}
+max_level <- 3
+
+map(1:max_level, \(level) {
+  
+search_str <- str_c("^(.*?/){", level, "}")
+
+ds %>%
+  mutate(dir1 = str_extract(dir, search_str)) %>%
+  group_by(dir1) %>%
+  summarize(size=sum(size)) 
+}) %>%
+  list_rbind() %>%
+  arrange(desc(size))
+```
+
+```{r}
+d %>%
+  filter(str_detect(dir, "raw.data/sequencing"))
+```
+
