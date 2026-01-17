@@ -18,60 +18,84 @@ while ((${#queue[@]})); do
 
     echo "### Visiting: $col" >&2
 
+    # TSV output; we will parse by tab
     mapfile -t lines < <(gocmd ls -lH --output_tsv "$col")
 
-    for line in "${lines[@]}"; do
+    # Skip the initial collection header block:
+    # iRODS Collection
+    # Type    Path
+    # collection   /path
+    # Content of /path
+    # Type    Name    Replica Owner   Replica Number  ...
+    in_header=1
+    for raw in "${lines[@]}"; do
+        line="$raw"
+
         # Trim leading/trailing whitespace
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
 
         [[ -z "$line" ]] && continue
-        [[ "$line" == "$col:" ]] && continue
 
-        # Collections: lines starting with "collection"
-        if [[ "$line" == collection[[:space:]]* ]]; then
-            abs_path="${line#collection[[:space:]]}"
+        if (( in_header )); then
+            # Detect end of header: the line starting with "Type<TAB>Name<TAB>Replica..."
+            if [[ "$line" == $'Type\tName\tReplica Owner\tReplica Number\tResource Hierarchy\tSize\tModify Time\tStatus\tDescription'* ]]; then
+                in_header=0
+            fi
+            continue
+        fi
+
+        # Now we are in the data section; fields are tab-separated:
+        # Type  Name  Replica Owner  Replica Number  Resource Hierarchy  Size  Modify Time  Status  Description
+        IFS=$'\t' read -r f_type f_name f_replica_owner f_replica_num \
+            f_resource f_size f_mtime f_status f_desc <<<"$line"
+
+        # Collections
+        if [[ "$f_type" == "collection" ]]; then
+            # Full absolute path of collection:
+            abs_path="${col%/}/$f_name"
 
             # Relative path to ROOT
             rel="${abs_path#$ROOT/}"
             [[ "$rel" == "$ROOT" ]] && rel="."
 
-            # Split rel into dir + name; for collections, treat rel as dir, empty name
             dir="$rel"
             name=""
 
-            printf "C\tNA\t%s\t%s\tNA\tNA\n" "$dir" "$name"
+            printf "C\tNA\t%s\t%s\tNA\tNA\n" \
+                "$dir" "$name"
+
             queue+=("$abs_path")
             echo "  queued collection: $abs_path (rel: $rel)" >&2
             continue
         fi
 
-        # Files:
-        # owner  replica  resource  size_num  size_unit  mtime  status  name
-        read -r owner replica resource size_num size_unit mtime status name <<<"$line" || continue
+        # Data objects
+        if [[ "$f_type" == "data-object" ]]; then
+            # Keep only replica 0
+            [[ "$f_replica_num" != "0" ]] && continue
 
-        # Keep only replica 0
-        [[ "$replica" != "0" ]] && continue
+            owner="$f_replica_owner"
+            size="$f_size"
+            mtime="$f_mtime"
 
-        size="${size_num} ${size_unit}"
-        abs_path="${col%/}/$name"
+            abs_path="${col%/}/$f_name"
 
-        # Relative path to ROOT
-        rel="${abs_path#$ROOT/}"
-        [[ "$rel" == "$ROOT" ]] && rel="."
+            # Relative path to ROOT
+            rel="${abs_path#$ROOT/}"
+            [[ "$rel" == "$ROOT" ]] && rel="."
 
-        # Split rel into dir and base name
-        # If rel has no '/', dir=".", name=rel
-        if [[ "$rel" == */* ]]; then
-            dir="${rel%/*}"
-            base="${rel##*/}"
-        else
-            dir="."
-            base="$rel"
+            # Split rel into dir and base name
+            if [[ "$rel" == */* ]]; then
+                dir="${rel%/*}"
+                base="${rel##*/}"
+            else
+                dir="."
+                base="$rel"
+            fi
+
+            printf "D\t%s\t%s\t%s\t%s\t%s\n" \
+                "$owner" "$dir" "$base" "$size" "$mtime"
         fi
-
-        # type owner dir name size time
-        printf "D\t%s\t%s\t%s\t%s\t%s\n" \
-            "$owner" "$dir" "$base" "$size" "$mtime"
     done
 done
