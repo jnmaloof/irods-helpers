@@ -18,7 +18,7 @@ while ((${#queue[@]})); do
 
     echo "### Visiting: $col" >&2
 
-    mapfile -t lines < <(gocmd ls -lH "$col")
+    mapfile -t lines < <(gocmd ls -lH --output_tsv "$col")
 
     for line in "${lines[@]}"; do
         # Trim leading/trailing whitespace
@@ -28,9 +28,9 @@ while ((${#queue[@]})); do
         [[ -z "$line" ]] && continue
         [[ "$line" == "$col:" ]] && continue
 
-        # Collections: lines starting with "C- "
-        if [[ "$line" == C-\ * ]]; then
-            abs_path="${line#C- }"
+        # Collections: lines starting with "collection"
+        if [[ "$line" == collection[[:space:]]* ]]; then
+            abs_path="${line#collection[[:space:]]}"
 
             # Relative path to ROOT
             rel="${abs_path#$ROOT/}"

@@ -13,6 +13,25 @@ gocmd get --progress -f -K --icat  /iplant/home/shared/ucd.brassica/raw.data/seq
 ## my home directory
 
 ```
-cd cd /media/volume/cyverse-data/
+cd /media/volume/cyverse-data/
 gocmd get --progress -f -K --icat /iplant/home/jnmaloof jnmaloof
 ```
+
+## ucd.tomato
+
+Would like to use ibun to compress some files before moving but have a permissions error
+
+In the meantime, move the raw files
+
+```
+cd /media/volume/cyverse-data/ucd.tomato
+gocmd get --progress -f -K --icat /iplant/home/shared/ucd.tomato/raw.seq.data raw.seq.data
+```
+
+Above not working because another process is already downloading.  Trying iget
+
+```
+iget -PrfTK -X restart  /iplant/home/shared/ucd.tomato/raw.seq.data raw.seq.data
+```
+
+Works!
